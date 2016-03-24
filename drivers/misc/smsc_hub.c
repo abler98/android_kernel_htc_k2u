@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -35,6 +35,7 @@ struct hsic_hub {
 };
 static struct hsic_hub *smsc_hub;
 
+/* APIs for setting/clearing bits and for reading/writing values */
 static inline int hsic_hub_get_u8(struct i2c_client *client, u8 reg)
 {
 	int ret;
@@ -110,10 +111,20 @@ static int i2c_hsic_hub_probe(struct i2c_client *client,
 				     I2C_FUNC_SMBUS_WORD_DATA))
 		return -EIO;
 
+	/* CONFIG_N bit in SP_ILOCK register has to be set before changing
+	 * other registers to change default configuration of hsic hub.
+	 */
 	hsic_hub_set_bits(client, SMSC3503_SP_ILOCK, CONFIG_N);
 
+	/* Can change default configuartion like VID,PID, strings etc
+	 * by writing new values to hsic hub registers.
+	 */
 	hsic_hub_write_word_data(client, SMSC3503_VENDORID, 0x05C6);
 
+	/* CONFIG_N bit in SP_ILOCK register has to be cleared for new
+	 * values in registers to be effective after writing to
+	 * other registers.
+	 */
 	hsic_hub_clear_bits(client, SMSC3503_SP_ILOCK, CONFIG_N);
 
 	return 0;
@@ -139,9 +150,9 @@ static struct i2c_driver hsic_hub_driver = {
 	.id_table = hsic_hub_id,
 };
 
-#define HSIC_HUB_VDD_VOL_MIN	1650000 
-#define HSIC_HUB_VDD_VOL_MAX	1950000 
-#define HSIC_HUB_VDD_LOAD	36000	
+#define HSIC_HUB_VDD_VOL_MIN	1650000 /* uV */
+#define HSIC_HUB_VDD_VOL_MAX	1950000 /* uV */
+#define HSIC_HUB_VDD_LOAD	36000	/* uA */
 static int __devinit smsc_hub_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -214,6 +225,9 @@ static int __devinit smsc_hub_probe(struct platform_device *pdev)
 	}
 
 	gpio_direction_output(pdata->hub_reset, 0);
+	/* Hub reset should be asserted for minimum 2microsec
+	 * before deasserting.
+	 */
 	udelay(5);
 	gpio_direction_output(pdata->hub_reset, 1);
 
@@ -297,6 +311,7 @@ static int msm_smsc_runtime_idle(struct device *dev)
 
 	return 0;
 }
+#endif
 
 static int smsc_hub_lpm_enter(struct device *dev)
 {
@@ -321,13 +336,14 @@ static int smsc_hub_lpm_exit(struct device *dev)
 	}
 	return ret;
 }
-#endif
 
 #ifdef CONFIG_PM
 static const struct dev_pm_ops smsc_hub_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(smsc_hub_lpm_enter, smsc_hub_lpm_exit)
+#ifdef CONFIG_PM_RUNTIME
 	SET_RUNTIME_PM_OPS(smsc_hub_lpm_enter, smsc_hub_lpm_exit,
 				msm_smsc_runtime_idle)
+#endif
 };
 #endif
 

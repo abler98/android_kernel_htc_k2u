@@ -112,71 +112,6 @@
 #endif
 		.endm
 
-
-#define	UNCOMPRESS_FOOTPRINT_BASE	0x8F9F8000
-#define	UNCOMPRESS_REGISTERS_BASE	(UNCOMPRESS_FOOTPRINT_BASE + 0x10)
-
-		.macro	write_uncompress_footprint,val
-		stmfd   sp!, {r5, r6}
-		ldr r5, =UNCOMPRESS_FOOTPRINT_BASE
-		ldr r6, =\val
-		str     r6, [r5]
-		ldmfd   sp!, {r5, r6}
-		.endm
-
-		.macro	store_regs_before_jumping_kernel
-		stmfd   sp!, {r5, r6}
-		ldr	r5, =UNCOMPRESS_REGISTERS_BASE	@ store r0
-		mov	r6, r0
-		str	r6, [r5]
-		add	r5, #4		@ store r1
-		mov	r6, r1
-		str	r6, [r5]
-		add	r5, #4		@ store r2
-		mov	r6, r2
-		str	r6, [r5]
-		add	r5, #4		@ store r4
-		mov	r6, r4
-		str	r6, [r5]
-		ldmfd   sp!, {r5, r6}
-		.endm
-
-		.macro	add_nop_delay
-		nop
-		nop
-		nop
-		nop
-		nop	@ 5
-		nop
-		nop
-		nop
-		nop
-		nop	@ 10
-		nop
-		nop
-		nop
-		nop
-		nop	@ 15
-		nop
-		nop
-		nop
-		nop
-		nop	@ 20
-		nop
-		nop
-		nop
-		nop
-		nop	@ 25
-		nop
-		nop
-		nop
-		nop
-		nop	@ 30
-		nop
-		nop
-		.endm
-
-
 		.section ".start", #alloc, #execinstr
 /*
  * sort out different calling conventions
@@ -520,21 +455,12 @@ not_relocated:	mov	r0, #0
 		mov	r1, sp			@ malloc space above stack
 		add	r2, sp, #0x10000	@ 64k max
 		mov	r3, r7
-		write_uncompress_footprint 0xAABBCC01
 		bl	decompress_kernel
-		write_uncompress_footprint 0xAABBCC02
-		add_nop_delay
-		write_uncompress_footprint 0xAABBCC03
 		bl	cache_clean_flush
-		write_uncompress_footprint 0xAABBCC04
-		add_nop_delay
-		write_uncompress_footprint 0xAABBCC05
 		bl	cache_off
-		write_uncompress_footprint 0xAABBCC06
 		mov	r0, #0			@ must be zero
 		mov	r1, r7			@ restore architecture number
 		mov	r2, r8			@ restore atags pointer
-		store_regs_before_jumping_kernel
  ARM(		mov	pc, r4	)		@ call kernel
  THUMB(		bx	r4	)		@ entry point is always ARM
 
@@ -641,6 +567,12 @@ __armv3_mpu_cache_on:
 		mcr	p15, 0, r0, c7, c0, 0	@ invalidate whole cache v3
 		mov	pc, lr
 
+#ifdef CONFIG_CPU_DCACHE_WRITETHROUGH
+#define CB_BITS 0x08
+#else
+#define CB_BITS 0x0c
+#endif
+
 __setup_mmu:	sub	r3, r4, #16384		@ Page directory size
 		bic	r3, r3, #0xff		@ Align the pointer
 		bic	r3, r3, #0x3f00
@@ -652,17 +584,14 @@ __setup_mmu:	sub	r3, r4, #16384		@ Page directory size
 		mov	r9, r0, lsr #18
 		mov	r9, r9, lsl #18		@ start of RAM
 		add	r10, r9, #0x10000000	@ a reasonable RAM size
-		mov	r1, #0x12
-		orr	r1, r1, #3 << 10
+		mov	r1, #0x12		@ XN|U + section mapping
+		orr	r1, r1, #3 << 10	@ AP=11
 		add	r2, r3, #16384
 1:		cmp	r1, r9			@ if virt > start of RAM
-#ifdef CONFIG_CPU_DCACHE_WRITETHROUGH
-		orrhs	r1, r1, #0x08		@ set cacheable
-#else
-		orrhs	r1, r1, #0x0c		@ set cacheable, bufferable
-#endif
-		cmp	r1, r10			@ if virt > end of RAM
-		bichs	r1, r1, #0x0c		@ clear cacheable, bufferable
+		cmphs	r10, r1			@   && end of RAM > virt
+		bic	r1, r1, #0x1c		@ clear XN|U + C + B
+		orrlo	r1, r1, #0x10		@ Set XN|U for non-RAM
+		orrhs	r1, r1, r6		@ set RAM section settings
 		str	r1, [r0], #4		@ 1:1 mapping
 		add	r1, r1, #1048576
 		teq	r0, r2
@@ -673,7 +602,7 @@ __setup_mmu:	sub	r3, r4, #16384		@ Page directory size
  * so there is no map overlap problem for up to 1 MB compressed kernel.
  * If the execution is in RAM then we would only be duplicating the above.
  */
-		mov	r1, #0x1e
+		orr	r1, r6, #0x04		@ ensure B is set for this
 		orr	r1, r1, #3 << 10
 		mov	r2, pc
 		mov	r2, r2, lsr #20
@@ -694,6 +623,7 @@ __arm926ejs_mmu_cache_on:
 __armv4_mmu_cache_on:
 		mov	r12, lr
 #ifdef CONFIG_MMU
+		mov	r6, #CB_BITS | 0x12	@ U
 		bl	__setup_mmu
 		mov	r0, #0
 		mcr	p15, 0, r0, c7, c10, 4	@ drain write buffer
@@ -715,6 +645,7 @@ __armv7_mmu_cache_on:
 #ifdef CONFIG_MMU
 		mrc	p15, 0, r11, c0, c1, 4	@ read ID_MMFR0
 		tst	r11, #0xf		@ VMSA
+		movne	r6, #CB_BITS | 0x02	@ !XN
 		blne	__setup_mmu
 		mov	r0, #0
 		mcr	p15, 0, r0, c7, c10, 4	@ drain write buffer
@@ -722,6 +653,7 @@ __armv7_mmu_cache_on:
 		mcrne	p15, 0, r0, c8, c7, 0	@ flush I,D TLBs
 #endif
 		mrc	p15, 0, r0, c1, c0, 0	@ read control reg
+		bic	r0, r0, #1 << 28	@ clear SCTLR.TRE
 		orr	r0, r0, #0x5000		@ I-cache enable, RR cache replacement
 		orr	r0, r0, #0x003c		@ write buffer
 #ifdef CONFIG_MMU
@@ -729,7 +661,7 @@ __armv7_mmu_cache_on:
 		orr	r0, r0, #1 << 25	@ big-endian page tables
 #endif
 		orrne	r0, r0, #1		@ MMU enabled
-		movne	r1, #-1
+		movne	r1, #0xfffffffd		@ domain 0 = client
 		mcrne	p15, 0, r3, c2, c0, 0	@ load page table pointer
 		mcrne	p15, 0, r1, c3, c0, 0	@ load domain access control
 #endif
@@ -742,6 +674,7 @@ __armv7_mmu_cache_on:
 
 __fa526_cache_on:
 		mov	r12, lr
+		mov	r6, #CB_BITS | 0x12	@ U
 		bl	__setup_mmu
 		mov	r0, #0
 		mcr	p15, 0, r0, c7, c7, 0	@ Invalidate whole cache
@@ -756,6 +689,7 @@ __fa526_cache_on:
 
 __arm6_mmu_cache_on:
 		mov	r12, lr
+		mov	r6, #CB_BITS | 0x12	@ U
 		bl	__setup_mmu
 		mov	r0, #0
 		mcr	p15, 0, r0, c7, c0, 0	@ invalidate whole cache v3

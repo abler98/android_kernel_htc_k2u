@@ -244,7 +244,6 @@ uint8_t Yushan_parse_interrupt(int intr_pad, int error_times[TOTAL_INTERRUPT_COU
 				pr_err("[CAM] %s:[ERR]EVENT_DXOPDP_NEWFRAME_ERR, error code =%d\n", __func__, bSpiData);
 				
 				interrupt_type |= RAWCHIP_INT_TYPE_ERROR;
-				interrupt_type |= RAWCHIP_INT_TYPE_DXO_IP_ERROR;
 				break;
 
 			case EVENT_DXODPP_NEWFRAME_ERR :
@@ -260,8 +259,6 @@ uint8_t Yushan_parse_interrupt(int intr_pad, int error_times[TOTAL_INTERRUPT_COU
 				SPI_Write(YUSHAN_HOST_IF_SPI_BASE_ADDRESS, 4, (uint8_t *)(&udwSpiBaseIndex));
 				
 				interrupt_type |= RAWCHIP_INT_TYPE_ERROR;
-				interrupt_type |= RAWCHIP_INT_TYPE_DXO_IP_ERROR;
-
 				break;
 
 			case EVENT_DXODOP7_NEWFRAME_ERR :
@@ -271,7 +268,6 @@ uint8_t Yushan_parse_interrupt(int intr_pad, int error_times[TOTAL_INTERRUPT_COU
 				pr_err("[CAM] %s:[ERR]EVENT_DXODOP7_NEWFRAME_ERR, error code =%d\n", __func__, bSpiData);
 				
 				interrupt_type |= RAWCHIP_INT_TYPE_ERROR;
-				interrupt_type |= RAWCHIP_INT_TYPE_DXO_IP_ERROR;
 				break;
 
 			case EVENT_CSI2TX_SP_ERR :

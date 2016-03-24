@@ -48,6 +48,12 @@ module_param(iso_layout, uint, 0644);
 MODULE_PARM_DESC(iso_layout, "Enable/Disable hardcoded ISO-layout of the keyboard. "
 		"(0 = disabled, [1] = enabled)");
 
+static unsigned int swap_opt_cmd = 0;
+module_param(swap_opt_cmd, uint, 0644);
+MODULE_PARM_DESC(swap_opt_cmd, "Swap the Option (\"Alt\") and Command (\"Flag\") keys. "
+		"(For people who want to keep Windows PC keyboard muscle memory. "
+		"[0] = as-is, Mac layout. 1 = swapped, Windows layout.)");
+
 struct apple_sc {
 	unsigned long quirks;
 	unsigned int fn_on;
@@ -152,12 +158,20 @@ static const struct apple_key_translation apple_iso_keyboard[] = {
 	{ }
 };
 
+static const struct apple_key_translation swapped_option_cmd_keys[] = {
+	{ KEY_LEFTALT,	KEY_LEFTMETA },
+	{ KEY_LEFTMETA,	KEY_LEFTALT },
+	{ KEY_RIGHTALT,	KEY_RIGHTMETA },
+	{ KEY_RIGHTMETA,KEY_RIGHTALT },
+	{ }
+};
+
 static const struct apple_key_translation *apple_find_translation(
 		const struct apple_key_translation *table, u16 from)
 {
 	const struct apple_key_translation *trans;
 
-	
+	/* Look for the translation */
 	for (trans = table; trans->from; trans++)
 		if (trans->from == from)
 			return trans;
@@ -244,6 +258,14 @@ static int hidinput_apple_event(struct hid_device *hid, struct input_dev *input,
 		}
 	}
 
+	if (swap_opt_cmd) {
+		trans = apple_find_translation(swapped_option_cmd_keys, usage->code);
+		if (trans) {
+			input_event(input, usage->type, trans->to, value);
+			return 1;
+		}
+	}
+
 	return 0;
 }
 
@@ -272,6 +294,9 @@ static int apple_event(struct hid_device *hdev, struct hid_field *field,
 	return 0;
 }
 
+/*
+ * MacBook JIS keyboard has wrong logical maximum
+ */
 static __u8 *apple_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 		unsigned int *rsize)
 {
@@ -292,7 +317,7 @@ static void apple_setup_input(struct input_dev *input)
 
 	set_bit(KEY_NUMLOCK, input->keybit);
 
-	
+	/* Enable all needed keys */
 	for (trans = apple_fn_keys; trans->from; trans++)
 		set_bit(trans->to, input->keybit);
 
@@ -311,14 +336,14 @@ static int apple_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 		unsigned long **bit, int *max)
 {
 	if (usage->hid == (HID_UP_CUSTOM | 0x0003)) {
-		
+		/* The fn key on Apple USB keyboards */
 		set_bit(EV_REP, hi->input->evbit);
 		hid_map_usage_clear(hi, usage, bit, max, EV_KEY, KEY_FN);
 		apple_setup_input(hi->input);
 		return 1;
 	}
 
-	
+	/* we want the hid layer to go through standard path (set and ignore) */
 	return 0;
 }
 

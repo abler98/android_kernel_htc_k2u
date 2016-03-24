@@ -24,7 +24,6 @@
 #include <linux/platform_device.h>
 #include <linux/of.h>
 #include <mach/cpufreq.h>
-#include <mach/perflock.h>
 
 static int enabled;
 static struct msm_thermal_data msm_thermal_info;
@@ -90,6 +89,17 @@ static void __cpuinit do_core_control(long temp)
 	if (!core_control_enabled)
 		return;
 
+	/**
+	 *  Offline cores starting from the max MPIDR to 1, when above limit,
+	 *  The core control mask is non zero and allows the core to be turned
+	 *  off.
+	 *  The core was not previously offlined by this module
+	 *  The core is the next in sequence.
+	 *  If the core was online for some reason, even after it was offlined
+	 *  by this module, offline it again.
+	 *  Online the back on if the temp is below the hysteresis and was
+	 *  offlined by this module and not already online.
+	 */
 	mutex_lock(&core_control_mutex);
 	if (msm_thermal_info.core_control_mask &&
 		temp >= msm_thermal_info.core_limit_temp_degC) {
@@ -116,6 +126,9 @@ static void __cpuinit do_core_control(long temp)
 			cpus_offlined &= ~BIT(i);
 			pr_info("%s: Allow Online CPU%d Temp: %ld\n",
 					KBUILD_MODNAME, i, temp);
+			/* If this core is already online, then bring up the
+			 * next offlined core.
+			 */
 			if (cpu_online(i))
 				continue;
 			ret = cpu_up(i);
@@ -143,9 +156,7 @@ static void __cpuinit check_temp(struct work_struct *work)
 		pr_debug("%s: Unable to read TSENS sensor %d\n",
 				KBUILD_MODNAME, tsens_dev.sensor_num);
 		goto reschedule;
-	} else
-		pr_info("msm_thermal: TSENS sensor %d (%ld C)\n",
-				tsens_dev.sensor_num, temp);
+	}
 
 	if (!limit_init) {
 		ret = msm_thermal_get_freq_table();
@@ -158,9 +169,6 @@ static void __cpuinit check_temp(struct work_struct *work)
 	do_core_control(temp);
 
 	if (temp >= msm_thermal_info.limit_temp_degC) {
-#ifdef CONFIG_PERFLOCK_BOOT_LOCK
-		release_boot_lock();
-#endif
 		if (limit_idx == limit_idx_low)
 			goto reschedule;
 
@@ -183,7 +191,7 @@ static void __cpuinit check_temp(struct work_struct *work)
 	if (max_freq == limited_max_freq)
 		goto reschedule;
 
-	
+	/* Update new limits */
 	for_each_possible_cpu(cpu) {
 		ret = update_cpu_max_freq(cpu, max_freq);
 		if (ret)
@@ -222,14 +230,21 @@ static struct notifier_block __refdata msm_thermal_cpu_notifier = {
 	.notifier_call = msm_thermal_cpu_callback,
 };
 
+/**
+ * We will reset the cpu frequencies limits here. The core online/offline
+ * status will be carried over to the process stopping the msm_thermal, as
+ * we dont want to online a core and bring in the thermal issues.
+ */
 static void __cpuinit disable_msm_thermal(void)
 {
 	int cpu = 0;
 
-	
-	cancel_delayed_work_sync(&check_temp_work);
+	/* make sure check_temp is no longer running */
+	cancel_delayed_work(&check_temp_work);
 	flush_scheduled_work();
 
+	if (limited_max_freq == MSM_CPUFREQ_NO_LIMIT)
+		return;
 
 	for_each_possible_cpu(cpu) {
 		update_cpu_max_freq(cpu, MSM_CPUFREQ_NO_LIMIT);
@@ -261,6 +276,7 @@ module_param_cb(enabled, &module_ops, &enabled, 0644);
 MODULE_PARM_DESC(enabled, "enforce thermal limit on cpu");
 
 
+/* Call with core_control_mutex locked */
 static int __cpuinit update_offline_cores(int val)
 {
 	int cpu = 0;

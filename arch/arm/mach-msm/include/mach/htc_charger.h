@@ -35,14 +35,14 @@ enum htc_charger_event {
 };
 
 enum htc_charging_cfg {
-	HTC_CHARGER_CFG_LIMIT = 0,	
+	HTC_CHARGER_CFG_LIMIT = 0,
 	HTC_CHARGER_CFG_SLOW,
 	HTC_CHARGER_CFG_FAST,
 };
 
 enum htc_power_source_type {
-	
-	
+
+
 	HTC_PWR_SOURCE_TYPE_BATT = 0,
 	HTC_PWR_SOURCE_TYPE_USB,
 	HTC_PWR_SOURCE_TYPE_AC,

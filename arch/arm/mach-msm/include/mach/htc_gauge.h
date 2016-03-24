@@ -39,7 +39,7 @@ struct htc_gauge {
 	int (*dump_all)(void);
 #endif
 	int (*get_attr_text)(char *buf, int size);
-	
+
 	int (*register_lower_voltage_alarm_notifier)(void (*callback)(int));
 	int (*enable_lower_voltage_alarm)(int enable);
 	int (*set_lower_voltage_alarm_threshold)(int thres_mV);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009, 2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2008-2009, 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -24,6 +24,11 @@
 #define SMIOC_LOG 0x00000003
 #define SMIOC_STATIC_LOG 0x00000004
 
+/* Event indentifier format:
+ * bit  31-28 is processor ID 8 => apps, 4 => Q6, 0 => modem
+ * bits 27-16 are subsystem id (event base)
+ * bits 15-0  are event id
+ */
 
 #define PROC                            0xF0000000
 #define SUB                             0x0FFF0000
@@ -46,6 +51,9 @@
 #define SMEM_LOG_DCVS_EVENT_BASE        0x00070000
 #define SMEM_LOG_SLEEP_EVENT_BASE       0x00080000
 #define SMEM_LOG_RPC_ROUTER_EVENT_BASE  0x00090000
+#define SMEM_LOG_IPC_ROUTER_EVENT_BASE  0x000D0000
+#define SMEM_LOG_QMI_CCI_EVENT_BASE     0x000E0000
+#define SMEM_LOG_QMI_CSI_EVENT_BASE     0x000F0000
 #if defined(CONFIG_MSM_N_WAY_SMSM)
 #define DEM_SMSM_ISR                    (SMEM_LOG_DEM_EVENT_BASE + 0x1)
 #define DEM_STATE_CHANGE                (SMEM_LOG_DEM_EVENT_BASE + 0x2)
